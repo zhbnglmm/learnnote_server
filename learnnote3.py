@@ -6,6 +6,7 @@ try:
 except ImportError:
     import config_default as config
 from exts import db
+from models import Label, LearnNote, FileNumber, Picture
 import logging
 import json
 app = Flask(__name__)
