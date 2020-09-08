@@ -1,0 +1,8 @@
+{
+    "python.pythonPath": "C:\\Alan\\learnnote3\\config\\venv\\Scripts\\python",
+     "python.linting.pylintPath": "C:\\Alan\\learnnote3\\config\\venv\\Scripts\\pylint",
+     "python.formatting.provider": "yapf",
+    "python.linting.flake8Enabled": false,
+    "python.linting.pylintEnabled": true,
+    "python.linting.enabled": true,
+ }
