@@ -9,63 +9,101 @@ from exts import db
 from models import Label, LearnNote, FileNumber, Picture
 import logging
 import json
+import datetime
 app = Flask(__name__)
 app.config.from_object(config)
 db.init_app(app)
 
-@app.route('/sync2server/', methods=['POST'])
+class DateEncoder(json.JSONEncoder): #重写json序列化类以解决datetime类型的数据不能被json的错误
+    def default(self, obj):
+        if isinstance(obj, datetime.datetime):
+            return obj.strftime('%Y-%m-%d %H:%M:%S')
+
+        elif isinstance(obj, datetime.date):
+            return obj.strftime("%Y-%m-%d")
+        else:
+            return json.JSONEncoder.default(self, obj)
+
+@app.route('/sync2server/', methods=['POST','GET'])
 def sync2Server():
     learnnotelist= getLearnNote2SyncList()
     filenumberlist= getFileNumber2SyncList()
-    if not learnnotelist or filenumberlist:
+    if learnnotelist or filenumberlist:
         return json.dumps({
             "errorcode": 1, 
             "message": "同步冲突！",
             "learnnotelist":learnnotelist,
             "filenumberlist":filenumberlist
-            })
-    FileNumberRecords = json.loads(request.form.get("FileNumberRecords", None))
+            },cls=DateEncoder)
+
+    RequestDict = json.loads(request.get_data())
+    FileNumberRecords = RequestDict["FileNumberRecords"]if "FileNumberRecords" in RequestDict else []
     for FileNumberRecord in FileNumberRecords:
-        FileNumber.query.filter(FileNumber.id_problem== FileNumberRecord.id_problem).delete()
+        FileNumber.query.filter(FileNumber.id_problem== FileNumberRecord['id_problem']).delete()
     for FileNumberRecord in FileNumberRecords:
         filenumber = FileNumber(
-            id_problem= FileNumberRecord.id_problem,
-            filenumber= FileNumberRecord.filenumber,
-            filetitle=FileNumberRecord.filetitle,
-            recordtime=FileNumberRecord.recordtime,
-            active=FileNumberRecord.active,
+            id_problem= FileNumberRecord['id_problem'],
+            filenumber= FileNumberRecord['filenumber'],
+            filetitle=FileNumberRecord['filetitle'],
+            recordtime=FileNumberRecord['recordtime'],
+            active=FileNumberRecord['active'],
             sync=1,
             )
         db.session.add(filenumber)
         db.session.commit()
-    LearnNoteRecords = json.loads(request.form.get("LearnNoteRecords", None))
+    LearnNoteRecords = RequestDict["LearnNoteRecords"]if "LearnNoteRecords" in RequestDict else []
     for LearnNoteRecord in LearnNoteRecords:
-        LearnNote.query.filter(LearnNote.id_problem== LearnNoteRecord.id_problem).delete()
-        Picture.query.filter(Picture.id_problem== LearnNoteRecord.id_problem).delete()
+        Picture.query.filter(Picture.id_problem== LearnNoteRecord['id_problem']).delete()
+        LearnNote.query.filter(LearnNote.id_problem== LearnNoteRecord['id_problem']).delete()
+
     for LearnNoteRecord in LearnNoteRecords:
         learnnote = LearnNote(
-            id_problem= LearnNoteRecord.id_problem,
-            d_level= LearnNoteRecord.d_level,
-            source=LearnNoteRecord.source,
-            notes=LearnNoteRecord.notes,
-            answer=LearnNoteRecord.answer,
-            usedtime=LearnNoteRecord.usedtime,
-            usedtimes=LearnNoteRecord.usedtimes,
-            inputdate=LearnNoteRecord.inputdate,
-            active=FileNumberRecord.active,
+            id_problem= LearnNoteRecord['id_problem'],
+            d_level= LearnNoteRecord['d_level'],
+            source=LearnNoteRecord['source'],
+            notes=LearnNoteRecord['notes'],
+            answer=LearnNoteRecord['answer'],
+            usedtime=LearnNoteRecord['usedtime'],
+            usedtimes=LearnNoteRecord['usedtimes'],
+            inputdate=LearnNoteRecord['inputdate'],
+            active=LearnNoteRecord['active'],
             sync=1,
             )
         db.session.add(learnnote)
         db.session.commit()
-        for PictureRecord in FileNumberRecord.PictureRecords:
-            picture = Picture(
-                id_problem= PictureRecord.id_problem,
-                filepath= PictureRecord.filepath,
-                isanswer= PictureRecord.isanswer,
-            )
-            db.session.add(picture)
-            db.session.commit()
+    PictureRecords = RequestDict["PictureRecords"]if "PictureRecords" in RequestDict else []
+    for PictureRecord in PictureRecords:
+        picture = Picture(
+            id_problem= PictureRecord['id_problem'],
+            filepath= PictureRecord['filepath'],
+            isanswer= PictureRecord['isanswer'],
+        )
+        db.session.add(picture)
+        db.session.commit()
     return json.dumps({"errorcode": 0, "message": "已同步！"})
+
+@app.route('/sync2access/', methods=['POST','GET'])
+def sync2Access():
+    learnnotelist= getLearnNote2SyncList()
+    filenumberlist= getFileNumber2SyncList()
+    if learnnotelist or filenumberlist:
+        LearnNote.query.filter(LearnNote.sync == 0).update({"sync": 1})
+        FileNumber.query.filter(FileNumber.sync == 0).update({"sync": 1})
+        db.session.commit()
+        return json.dumps({
+            "errorcode": 0, 
+            "message": "成功得到服务器数据！",
+            "learnnotelist":learnnotelist,
+            "filenumberlist":filenumberlist
+            },cls=DateEncoder)
+    else:
+        return json.dumps({
+            "errorcode": 1, 
+            "message": "无待同步数据！",
+            "learnnotelist":[],
+            "filenumberlist":[]
+            },cls=DateEncoder)
+
 def getFileNumber2SyncList():
     filenumbers= FileNumber.query.filter(FileNumber.sync==0).all()
     FileNumberDict ={}
